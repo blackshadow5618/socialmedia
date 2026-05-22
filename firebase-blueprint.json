@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User connection profile storing active and authenticated social network platform API tokens",
+      "type": "object",
+      "properties": {
+        "lastUpdated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The ISO timestamp when the user document was last updated"
+        },
+        "tokens": {
+          "type": "object",
+          "description": "Secure mapping of connected social media channels including accessToken and profile info"
+        }
+      },
+      "required": ["lastUpdated", "tokens"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Social media publication post details scheduled or published to various channels",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The owner user ID who created this post"
+        },
+        "topic": {
+          "type": "string",
+          "description": "The topic or theme used to draft this post"
+        },
+        "caption": {
+          "type": "string",
+          "description": "Main descriptive body content to publish to the platform feeds"
+        },
+        "hashtags": {
+          "type": "array",
+          "description": "Collection of dynamic tags and topics related to the post"
+        },
+        "platforms": {
+          "type": "array",
+          "description": "Target publishing integrations"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["scheduled", "published"],
+          "description": "Status of the scheduled worker dispatch process"
+        },
+        "scheduledTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Target publication date-time"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Optional media attachment URL"
+        },
+        "dispatchedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The actual time when external social media APIs successfully finished dispatching"
+        }
+      },
+      "required": ["userId", "caption", "platforms", "status", "scheduledTime"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "Billing plan state of the client user account",
+      "type": "object",
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": ["Free", "Pro", "Enterprise"],
+          "description": "Current active capability level tier"
+        },
+        "interval": {
+          "type": "string",
+          "enum": ["monthly", "annual"],
+          "description": "Renewal period interval for subscription"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Status state of billing validity"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The update date of subscription record"
+        }
+      },
+      "required": ["tier", "interval", "active"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Profiles and long-lived OAuth tokens index of verified hub users"
+    },
+    "posts/{postId}": {
+      "schema": "Post",
+      "description": "Schedule calendar items and content dispatches"
+    },
+    "subscriptions/{subId}": {
+      "schema": "Subscription",
+      "description": "Subscription records mapping synchronized active users to premium tiers"
+    }
+  }
+}

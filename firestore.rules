@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net - Default Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Hardened Global Helpers ---
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Helper to check if a specific key has changed
+    function isImmutable(field) {
+      return incoming()[field] == existing()[field];
+    }
+
+
+    // --- 2. Users Collection Rules ---
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      
+      // Prevent other users from listing or querying user tables
+      allow list: if false;
+
+      allow create: if isSignedIn() && request.auth.uid == userId && isEmailVerified() && isValidUser(incoming());
+      
+      allow update: if isSignedIn() && request.auth.uid == userId && isEmailVerified() && isValidUser(incoming());
+      
+      allow delete: if false; // User accounts are preserved
+    }
+
+    function isValidUser(user) {
+      return user.keys().hasAll(['lastUpdated', 'tokens']) &&
+             user.keys().size() == 2 &&
+             user.lastUpdated is string &&
+             user.lastUpdated.size() <= 40 &&
+             user.tokens is map;
+    }
+
+
+    // --- 3. Posts Collection Rules ---
+    match /posts/{postId} {
+      // Direct post lookup is permitted only for post owner
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      
+      // Query Enforcer: Prevents blanket listing and requires matching where constraints
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn() && isEmailVerified() && isValidId(postId) && 
+                      incoming().userId == request.auth.uid && isValidPost(incoming());
+
+      allow update: if isSignedIn() && isEmailVerified() && isValidId(postId) &&
+                      existing().userId == request.auth.uid && incoming().userId == request.auth.uid &&
+                      isImmutable('userId') && isValidPost(incoming()) && (
+                        // Case A: Editing caption/topic
+                        (incoming().diff(existing()).affectedKeys().hasOnly(['topic', 'caption', 'hashtags', 'platforms', 'scheduledTime', 'imageUrl'])) ||
+                        // Case B: Client or backend scheduler publishing / updating status
+                        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'dispatchedAt']))
+                      );
+
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    function isValidPost(post) {
+      return post.keys().hasAll(['userId', 'caption', 'platforms', 'status', 'scheduledTime']) &&
+             post.userId is string &&
+             post.userId.size() <= 128 &&
+             post.caption is string &&
+             post.caption.size() <= 5000 &&
+             post.platforms is list &&
+             post.platforms.size() > 0 &&
+             post.platforms.size() <= 10 &&
+             post.status is string &&
+             (post.status == 'scheduled' || post.status == 'published') &&
+             post.scheduledTime is string &&
+             post.scheduledTime.size() <= 40 &&
+             (!post.keys().contains('topic') || (post.topic is string && post.topic.size() <= 200)) &&
+             (!post.keys().contains('imageUrl') || (post.imageUrl is string && post.imageUrl.size() <= 2000)) &&
+             (!post.keys().contains('dispatchedAt') || (post.dispatchedAt is string && post.dispatchedAt.size() <= 40));
+    }
+
+
+    // --- 4. Subscriptions Collection Rules (System-Managed) ---
+    match /subscriptions/{subId} {
+      // Standard users can lookup subscription states but are forbidden from direct updates (system-only)
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow write: if false; // Directly secured and immutable on the client side
+    }
+  }
+}
